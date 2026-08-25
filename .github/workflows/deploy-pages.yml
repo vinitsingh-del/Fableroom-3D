@@ -21,6 +21,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Restore original cabinet images
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p public/product
+          ASSET_BASE="https://fableroom-3d.vinit-singh482832.chatgpt.site/product"
+          for file in \
+            cabinet-front.png \
+            cabinet-three-quarter.png \
+            cabinet-rear.png \
+            cabinet-open.png \
+            cabinet-detail.png \
+            cabinet-room.png
+          do
+            curl --fail --location --retry 3 --retry-delay 2 \
+              "${ASSET_BASE}/${file}" \
+              --output "public/product/${file}"
+          done
+
       - name: Set up Node
         uses: actions/setup-node@v4
         with:
