@@ -14,7 +14,6 @@ type ViewerState = {
   cabinet: THREE.Group;
   leftDoor: THREE.Group;
   rightDoor: THREE.Group;
-  exactFront: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
 };
 
 const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
@@ -98,8 +97,7 @@ function addBox(
 }
 
 async function createCabinet(renderer: THREE.WebGLRenderer, onProgress: (value: number) => void) {
-  const crops = await Promise.all([
-    loadCrop(renderer, FRONT, { x: 252, y: 485, width: 916, height: 1144 }, 1300),
+  const [leftFront, rightFront, rear, side, top, leftBack, rightBack] = await Promise.all([
     loadCrop(renderer, FRONT, { x: 286, y: 525, width: 420, height: 1004 }),
     loadCrop(renderer, FRONT, { x: 713, y: 525, width: 420, height: 1004 }),
     loadCrop(renderer, REAR, { x: 382, y: 505, width: 815, height: 1085 }),
@@ -107,11 +105,8 @@ async function createCabinet(renderer: THREE.WebGLRenderer, onProgress: (value: 
     loadCrop(renderer, ANGLED, { x: 420, y: 488, width: 765, height: 118 }, 1024),
     loadCrop(renderer, OPEN, { x: 155, y: 666, width: 350, height: 820 }, 600),
     loadCrop(renderer, OPEN, { x: 760, y: 655, width: 330, height: 905 }, 600),
-    loadCrop(renderer, OPEN, { x: 440, y: 660, width: 360, height: 780 }, 650),
   ]);
   onProgress(72);
-
-  const [frontWhole, leftFront, rightFront, rear, side, top, leftBack, rightBack, inside] = crops;
   const cabinet = new THREE.Group();
   cabinet.name = "Hand-Carved Cabinet";
 
@@ -123,40 +118,69 @@ async function createCabinet(renderer: THREE.WebGLRenderer, onProgress: (value: 
   const frontZ = depth / 2 + 0.065;
 
   const wood = standardMaterial(side, 0xa56e3f, 0.58);
-  const darkWood = standardMaterial(null, 0x4b2817, 0.72);
-  const innerWood = standardMaterial(inside, 0x80502f, 0.71);
+  const innerWood = standardMaterial(null, 0x835233, 0.74);
+  const innerBack = standardMaterial(null, 0x704129, 0.79);
   const rearMat = standardMaterial(rear, 0xa06a3d, 0.67);
   const topMat = standardMaterial(top, 0xa87444, 0.55);
+  const shelfMaterial = standardMaterial(null, 0x8c5937, 0.66);
   const black = new THREE.MeshStandardMaterial({ color: 0x11100f, roughness: 0.31, metalness: 0.56 });
 
-  const bodyMaterials: THREE.Material[] = [wood, wood, topMat, wood, innerWood, rearMat];
-  addBox(cabinet, [width, bodyHeight, depth], [0, bodyCenterY, 0], bodyMaterials);
+  // A true hollow carcass: separate panels create real depth, corners and occlusion.
+  const panelThickness = 0.14;
+  const backThickness = 0.08;
+  const panelDepth = depth - backThickness;
+  const panelCenterZ = backThickness / 2;
+  const innerWidth = width - panelThickness * 2;
+
+  const leftSideMaterials: THREE.Material[] = [innerWood, wood, wood, wood, wood, wood];
+  const rightSideMaterials: THREE.Material[] = [wood, innerWood, wood, wood, wood, wood];
+  const topPanelMaterials: THREE.Material[] = [wood, wood, topMat, innerWood, wood, wood];
+  const bottomPanelMaterials: THREE.Material[] = [wood, wood, innerWood, wood, wood, wood];
+  const backPanelMaterials: THREE.Material[] = [wood, wood, wood, wood, innerBack, rearMat];
+
+  addBox(
+    cabinet,
+    [panelThickness, bodyHeight, panelDepth],
+    [-width / 2 + panelThickness / 2, bodyCenterY, panelCenterZ],
+    leftSideMaterials,
+  );
+  addBox(
+    cabinet,
+    [panelThickness, bodyHeight, panelDepth],
+    [width / 2 - panelThickness / 2, bodyCenterY, panelCenterZ],
+    rightSideMaterials,
+  );
+  addBox(
+    cabinet,
+    [innerWidth, panelThickness, panelDepth],
+    [0, baseHeight + bodyHeight - panelThickness / 2, panelCenterZ],
+    topPanelMaterials,
+  );
+  addBox(
+    cabinet,
+    [innerWidth, panelThickness, panelDepth],
+    [0, baseHeight + panelThickness / 2, panelCenterZ],
+    bottomPanelMaterials,
+  );
+  addBox(
+    cabinet,
+    [innerWidth, bodyHeight - panelThickness * 2, backThickness],
+    [0, bodyCenterY, -depth / 2 + backThickness / 2],
+    backPanelMaterials,
+  );
+
+  // The shelf is a full-depth solid board, not a texture painted onto the back.
+  addBox(cabinet, [innerWidth - 0.05, 0.11, panelDepth - 0.12], [0, 2.03, panelCenterZ + 0.02], shelfMaterial);
+  addBox(cabinet, [innerWidth - 0.05, 0.07, 0.055], [0, 2.03, depth / 2 - 0.045], wood);
 
   addBox(cabinet, [3.0, baseHeight, 1.48], [0, baseHeight / 2, 0.04], wood);
   addBox(cabinet, [3.38, 0.12, 1.76], [0, baseHeight + bodyHeight + 0.015, 0], topMat);
-
-  const shelfMaterial = standardMaterial(top, 0x956139, 0.7);
-  addBox(cabinet, [2.83, 0.08, 1.45], [0, 2.03, 0.03], shelfMaterial);
 
   const frameDepth = 0.13;
   addBox(cabinet, [0.18, bodyHeight, frameDepth], [-width / 2 + 0.09, bodyCenterY, frontZ], wood);
   addBox(cabinet, [0.18, bodyHeight, frameDepth], [width / 2 - 0.09, bodyCenterY, frontZ], wood);
   addBox(cabinet, [width - 0.24, 0.18, frameDepth], [0, baseHeight + bodyHeight - 0.09, frontZ], wood);
   addBox(cabinet, [width - 0.24, 0.18, frameDepth], [0, baseHeight + 0.09, frontZ], wood);
-
-  const exactFrontMat = new THREE.MeshStandardMaterial({
-    map: frontWhole,
-    color: 0xffffff,
-    roughness: 0.62,
-    metalness: 0,
-    transparent: true,
-    side: THREE.FrontSide,
-  });
-  const exactFront = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 3.997), exactFrontMat);
-  exactFront.position.set(0, 1.997, frontZ + 0.072);
-  exactFront.castShadow = true;
-  exactFront.name = "Original front photograph surface";
-  cabinet.add(exactFront);
 
   const doorHeight = 3.11;
   const doorWidth = 1.385;
@@ -173,14 +197,14 @@ async function createCabinet(renderer: THREE.WebGLRenderer, onProgress: (value: 
   leftDoor.name = "Left carved door";
   leftDoor.position.set(-width / 2 + 0.165, doorY, frontZ + 0.11);
   const leftDoorMaterials = [doorSide, doorSide, doorSide, doorSide, leftFrontMat, leftBackMat];
-  addBox(leftDoor, [doorWidth, doorHeight, doorThickness], [doorWidth / 2, 0, 0], leftDoorMaterials);
+  addBox(leftDoor, [doorWidth, doorHeight, doorThickness], [doorWidth / 2, 0, 0], leftDoorMaterials, false);
   cabinet.add(leftDoor);
 
   const rightDoor = new THREE.Group();
   rightDoor.name = "Right carved door";
   rightDoor.position.set(width / 2 - 0.165, doorY, frontZ + 0.11);
   const rightDoorMaterials = [doorSide, doorSide, doorSide, doorSide, rightFrontMat, rightBackMat];
-  addBox(rightDoor, [doorWidth, doorHeight, doorThickness], [-doorWidth / 2, 0, 0], rightDoorMaterials);
+  addBox(rightDoor, [doorWidth, doorHeight, doorThickness], [-doorWidth / 2, 0, 0], rightDoorMaterials, false);
   cabinet.add(rightDoor);
 
   const knobGeometry = new THREE.SphereGeometry(0.105, 24, 16);
@@ -207,7 +231,7 @@ async function createCabinet(renderer: THREE.WebGLRenderer, onProgress: (value: 
   cabinet.add(bodyEdges);
 
   onProgress(100);
-  return { cabinet, leftDoor, rightDoor, exactFront };
+  return { cabinet, leftDoor, rightDoor };
 }
 
 function ControlButton({
@@ -314,14 +338,18 @@ export default function CabinetViewer() {
     keyLight.shadow.camera.right = 6;
     keyLight.shadow.camera.top = 7;
     keyLight.shadow.camera.bottom = -4;
-    keyLight.shadow.bias = -0.0006;
+    keyLight.shadow.bias = -0.00035;
+    keyLight.shadow.radius = 4;
     scene.add(keyLight);
     const rim = new THREE.DirectionalLight(0xb5c8d2, 1.55);
     rim.position.set(-5, 4, -5);
     scene.add(rim);
-    const frontFill = new THREE.PointLight(0xffd5a8, 18, 14, 2);
+    const frontFill = new THREE.PointLight(0xffd5a8, 14, 14, 2);
     frontFill.position.set(-3.6, 3.7, 5.2);
     scene.add(frontFill);
+    const interiorFill = new THREE.PointLight(0xffdfbf, 7.5, 9, 2);
+    interiorFill.position.set(0, 2.2, 3.25);
+    scene.add(interiorFill);
 
     const floorMaterial = new THREE.MeshStandardMaterial({ color: 0xc5bbae, roughness: 0.88, metalness: 0 });
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(30, 30), floorMaterial);
@@ -404,10 +432,10 @@ export default function CabinetViewer() {
     renderer.domElement.addEventListener("pointercancel", onCabinetPointerLeave);
     renderer.domElement.addEventListener("pointerleave", onCabinetPointerLeave);
 
-    createCabinet(renderer, setLoading).then(({ cabinet, leftDoor, rightDoor, exactFront }) => {
+    createCabinet(renderer, setLoading).then(({ cabinet, leftDoor, rightDoor }) => {
       if (disposed) return;
       scene.add(cabinet);
-      stateRef.current = { scene, camera, controls, renderer, cabinet, leftDoor, rightDoor, exactFront };
+      stateRef.current = { scene, camera, controls, renderer, cabinet, leftDoor, rightDoor };
       setReady(true);
       setTimeout(() => setHelpVisible(true), 300);
     }).catch(() => {
@@ -424,9 +452,6 @@ export default function CabinetViewer() {
         const target = doorTargetRef.current;
         state.leftDoor.rotation.y = THREE.MathUtils.damp(state.leftDoor.rotation.y, -target, 7, delta);
         state.rightDoor.rotation.y = THREE.MathUtils.damp(state.rightDoor.rotation.y, target, 7, delta);
-        const openness = Math.abs(state.leftDoor.rotation.y) / 1.9;
-        state.exactFront.material.opacity = THREE.MathUtils.clamp(1 - openness * 10, 0, 1);
-        state.exactFront.visible = state.exactFront.material.opacity > 0.01;
       }
       renderer.render(scene, camera);
     };
@@ -497,10 +522,8 @@ export default function CabinetViewer() {
     setExporting(true);
     const previousLeft = state.leftDoor.rotation.y;
     const previousRight = state.rightDoor.rotation.y;
-    const previousFront = state.exactFront.visible;
     state.leftDoor.rotation.y = 0;
     state.rightDoor.rotation.y = 0;
-    state.exactFront.visible = true;
     const exporter = new GLTFExporter();
     try {
       const result = await exporter.parseAsync(state.cabinet, { binary: true, onlyVisible: true });
@@ -513,7 +536,6 @@ export default function CabinetViewer() {
     } finally {
       state.leftDoor.rotation.y = previousLeft;
       state.rightDoor.rotation.y = previousRight;
-      state.exactFront.visible = previousFront;
       setExporting(false);
     }
   };
