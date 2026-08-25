@@ -17,10 +17,11 @@ type ViewerState = {
   exactFront: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial>;
 };
 
-const FRONT = "/product/cabinet-front.png";
-const ANGLED = "/product/cabinet-three-quarter.png";
-const REAR = "/product/cabinet-rear.png";
-const OPEN = "/product/cabinet-open.png";
+const BASE_PATH = process.env.NEXT_PUBLIC_BASE_PATH ?? "";
+const FRONT = `${BASE_PATH}/product/cabinet-front.png`;
+const ANGLED = `${BASE_PATH}/product/cabinet-three-quarter.png`;
+const REAR = `${BASE_PATH}/product/cabinet-rear.png`;
+const OPEN = `${BASE_PATH}/product/cabinet-open.png`;
 
 const INITIAL_CAMERA = new THREE.Vector3(5.6, 4.15, 7.2);
 const CAMERA_TARGET = new THREE.Vector3(0, 1.92, 0);
@@ -261,8 +262,8 @@ export default function CabinetViewer() {
     { src: ANGLED, label: "Three-quarter" },
     { src: REAR, label: "Rear" },
     { src: OPEN, label: "Open storage" },
-    { src: "/product/cabinet-detail.png", label: "Carving detail" },
-    { src: "/product/cabinet-room.png", label: "In room" },
+    { src: `${BASE_PATH}/product/cabinet-detail.png`, label: "Carving detail" },
+    { src: `${BASE_PATH}/product/cabinet-room.png`, label: "In room" },
   ];
 
   useEffect(() => {
