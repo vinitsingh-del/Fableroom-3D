@@ -234,6 +234,7 @@ export default function CabinetViewer() {
   const stateRef = useRef<ViewerState | null>(null);
   const frameRef = useRef(0);
   const doorTargetRef = useRef(0);
+  const doorsOpenRef = useRef(false);
   const [loading, setLoading] = useState(8);
   const [ready, setReady] = useState(false);
   const [doorsOpen, setDoorsOpen] = useState(false);
@@ -242,6 +243,18 @@ export default function CabinetViewer() {
   const [activePhoto, setActivePhoto] = useState(0);
   const [helpVisible, setHelpVisible] = useState(true);
   const [exporting, setExporting] = useState(false);
+
+  const setDoorState = (next: boolean) => {
+    doorsOpenRef.current = next;
+    setDoorsOpen(next);
+    doorTargetRef.current = next ? 1.9 : 0;
+    if (next && stateRef.current) {
+      stateRef.current.camera.position.lerp(new THREE.Vector3(4.8, 3.65, 6.3), 0.45);
+      stateRef.current.controls.target.set(0, 1.9, 0.3);
+    }
+  };
+
+  const toggleDoors = () => setDoorState(!doorsOpenRef.current);
 
   const photos = [
     { src: FRONT, label: "Front" },
@@ -338,6 +351,58 @@ export default function CabinetViewer() {
     renderer.domElement.addEventListener("pointerdown", hideHelp, { once: true });
     renderer.domElement.addEventListener("wheel", hideHelp, { once: true, passive: true });
 
+    const raycaster = new THREE.Raycaster();
+    const pointer = new THREE.Vector2();
+    const pointerStart = new THREE.Vector2();
+    let didDrag = false;
+
+    const onCabinetPointerDown = (event: PointerEvent) => {
+      pointerStart.set(event.clientX, event.clientY);
+      didDrag = false;
+      renderer.domElement.style.cursor = "grabbing";
+    };
+
+    const onCabinetPointerMove = (event: PointerEvent) => {
+      if ((event.buttons & 1) === 0) return;
+      if (pointerStart.distanceTo(new THREE.Vector2(event.clientX, event.clientY)) > 7) didDrag = true;
+    };
+
+    const onCabinetPointerUp = (event: PointerEvent) => {
+      renderer.domElement.style.cursor = "grab";
+      const state = stateRef.current;
+      if (!state || didDrag) return;
+
+      const bounds = renderer.domElement.getBoundingClientRect();
+      pointer.set(
+        ((event.clientX - bounds.left) / bounds.width) * 2 - 1,
+        -((event.clientY - bounds.top) / bounds.height) * 2 + 1,
+      );
+      raycaster.setFromCamera(pointer, camera);
+      const hit = raycaster.intersectObject(state.cabinet, true)[0];
+      if (!hit) return;
+
+      const next = !doorsOpenRef.current;
+      doorsOpenRef.current = next;
+      setDoorsOpen(next);
+      doorTargetRef.current = next ? 1.9 : 0;
+      setHelpVisible(false);
+      if (next) {
+        camera.position.lerp(new THREE.Vector3(4.8, 3.65, 6.3), 0.45);
+        controls.target.set(0, 1.9, 0.3);
+      }
+    };
+
+    const onCabinetPointerLeave = () => {
+      renderer.domElement.style.cursor = "grab";
+    };
+
+    renderer.domElement.style.cursor = "grab";
+    renderer.domElement.addEventListener("pointerdown", onCabinetPointerDown);
+    renderer.domElement.addEventListener("pointermove", onCabinetPointerMove);
+    renderer.domElement.addEventListener("pointerup", onCabinetPointerUp);
+    renderer.domElement.addEventListener("pointercancel", onCabinetPointerLeave);
+    renderer.domElement.addEventListener("pointerleave", onCabinetPointerLeave);
+
     createCabinet(renderer, setLoading).then(({ cabinet, leftDoor, rightDoor, exactFront }) => {
       if (disposed) return;
       scene.add(cabinet);
@@ -387,6 +452,11 @@ export default function CabinetViewer() {
       cancelAnimationFrame(frameRef.current);
       observer.disconnect();
       window.removeEventListener("keydown", keyHandler);
+      renderer.domElement.removeEventListener("pointerdown", onCabinetPointerDown);
+      renderer.domElement.removeEventListener("pointermove", onCabinetPointerMove);
+      renderer.domElement.removeEventListener("pointerup", onCabinetPointerUp);
+      renderer.domElement.removeEventListener("pointercancel", onCabinetPointerLeave);
+      renderer.domElement.removeEventListener("pointerleave", onCabinetPointerLeave);
       controls.dispose();
       renderer.dispose();
       renderer.domElement.remove();
@@ -412,16 +482,6 @@ export default function CabinetViewer() {
     state.camera.position.copy(INITIAL_CAMERA);
     state.controls.target.copy(CAMERA_TARGET);
     state.controls.update();
-  };
-
-  const toggleDoors = () => {
-    const next = !doorsOpen;
-    setDoorsOpen(next);
-    doorTargetRef.current = next ? 1.9 : 0;
-    if (next && stateRef.current) {
-      stateRef.current.camera.position.lerp(new THREE.Vector3(4.8, 3.65, 6.3), 0.45);
-      stateRef.current.controls.target.set(0, 1.9, 0.3);
-    }
   };
 
   const toggleFullscreen = async () => {
@@ -465,7 +525,7 @@ export default function CabinetViewer() {
         <div>
           <div className="model-kicker"><span /> Interactive 3D asset</div>
           <h1>Hand-Carved Cabinet</h1>
-          <p>Original product photography mapped onto a fully explorable object.</p>
+          <p>Click or tap the cabinet to open it and inspect the shelves inside.</p>
         </div>
       </header>
 
@@ -487,8 +547,8 @@ export default function CabinetViewer() {
       {ready && helpVisible && (
         <div className="gesture-help" aria-hidden="true">
           <div className="mouse-gesture"><i /></div>
-          <strong>Drag to rotate</strong>
-          <span>Scroll or pinch to zoom · right-drag to pan</span>
+          <strong>Click the cabinet to open</strong>
+          <span>Drag to rotate · scroll or pinch to zoom</span>
         </div>
       )}
 
@@ -502,7 +562,7 @@ export default function CabinetViewer() {
       </div>
 
       <div className="viewer-footer">
-        <div className="interaction-key"><b>Orbit</b> 360° <span>·</span> <b>Zoom</b> 4× <span>·</span> <b>Doors</b> interactive</div>
+        <div className="interaction-key"><b>Click cabinet</b> open / close <span>·</span> <b>Orbit</b> 360° <span>·</span> <b>Zoom</b> 4×</div>
         <button type="button" className="door-cta" onClick={toggleDoors} aria-pressed={doorsOpen}>
           <span>{doorsOpen ? "Close cabinet" : "Open cabinet"}</span>
           <i className={doorsOpen ? "open" : ""}>↗</i>
